@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel BI - Ranking Orçamentário</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Cores oficiais do Governo do Paraná */
+        .bg-gov-blue { background-color: #003366; }
+        .text-gov-blue { color: #003366; }
+        .border-gov-blue { border-color: #003366; }
+        .hover\:bg-gov-blue-dark:hover { background-color: #002244; }
+
+        .bg-gov-green { background-color: #009933; }
+        .text-gov-green { color: #009933; }
+        
+        .text-gov-gold { color: #DAA520; }
+        .bg-gov-gold { background-color: #DAA520; }
+
+        /* Cores primárias personalizadas baseadas na imagem e uso existente */
+        .text-primary-dark { color: #003366; } /* Cor azul escura do governo */
+        .bg-primary-dark { background-color: #003366; } /* Cor azul escura do governo */
+        .text-primary-medium { color: #004B91; } /* Um tom de azul do indicador, próximo ao 'satisfactory' */
+        .text-primary-light { color: #0066CC; } /* Um tom de azul do indicador, próximo ao 'excellent' */
+
+
+        /* Estilos base e fontes */
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: #f4f7f6;
+            color: #374151;
+        }
+        h1, h2, h3, h4, h5, h6, .font-poppins {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        /* Estilos de gráficos */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 300px; /* Altura consistente para cada caixa de gráfico */
+            max-height: 400px;
+            display: flex; /* Adicionado para alinhamento interno */
+            flex-direction: column; /* Adicionado para alinhamento interno */
+            justify-content: flex-start; /* Alinha o conteúdo ao topo */
+            align-items: center; /* Centraliza horizontalmente */
+            padding-top: 1rem; /* Espaçamento para o título */
+        }
+        /* Correção para o dimensionamento do canvas dentro do container flex */
+        .chart-container canvas {
+            width: 100% !important; /* Mantém a largura 100% */
+            /* Remove height: 100% !important; e confia no flex-grow */
+            flex-grow: 1; /* Permite que o canvas ocupe o espaço vertical disponível */
+            min-height: 0; /* Importante para que o flex-grow funcione em alguns casos */
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Estilos para destaque da unidade selecionada */
+        .kpi-selected-highlight {
+            border-color: #009933; /* gov-green */
+            background-color: #e6ffe6; /* Light green for background */
+            box-shadow: 0 4px 10px rgba(0, 153, 51, 0.2);
+            transition: all 0.3s ease-in-out;
+        }
+
+        /* Novas classes de cores para os status dos indicadores (tons de azul + vermelho) */
+        .dot-excellent { background-color: #0066CC; } /* Azul mais claro (primary-light) */
+        .text-excellent { color: #0066CC; }
+        .dot-satisfactory { background-color: #004B91; } /* Azul médio (primary-medium) */
+        .text-satisfactory { color: #004B91; }
+        .dot-moderate { background-color: #002B5B; } /* Azul escuro (primary-dark) */
+        .text-moderate { color: #002B5B; }
+        .dot-insatisfactory { background-color: #DC3545; } /* Vermelho vibrante */
+        .text-insatisfactory { color: #DC3545; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 sm:p-8">
+
+    <div class="max-w-7xl mx-auto bg-white shadow-2xl rounded-xl overflow-hidden">
+        <!-- Cabeçalho do Painel BI - Ajustado para o modelo da imagem -->
+        <header class="bg-gov-blue text-white p-6 md:p-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold">Painel BI: Acompanhamento Orçamentário</h1>
+            <p class="text-lg text-white mt-1">Visão Detalhada de Pontuações e Ranking por Unidade</p>
+        </header>
+
+        <main class="p-6 md:p-8">
+            <!-- Seção de KPIs -->
+            <section class="mb-12">
+                <h2 class="text-2xl font-bold text-primary-dark mb-6 text-center">Indicadores Chave de Desempenho</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div id="kpi-avg-score" class="bg-white p-6 rounded-lg shadow-md border border-gray-200 text-center">
+                        <p class="text-5xl font-bold text-gov-green">85.5</p>
+                        <p class="text-gray-700 font-semibold mt-2">Nota Média Geral</p>
+                    </div>
+                    <div id="kpi-best-unit" class="bg-white p-6 rounded-lg shadow-md border border-gray-200 text-center">
+                        <p class="text-5xl font-bold text-primary-medium" id="best-unit-name">Carregando...</p>
+                        <p class="text-gray-700 font-semibold mt-2" id="best-unit-label">Melhor Desempenho no Grupo</p>
+                    </div>
+                    <div id="kpi-selected-unit" class="bg-white p-6 rounded-lg shadow-md border border-gray-200 text-center">
+                        <p class="text-5xl font-bold text-gov-gold" id="selected-unit-name">N/A</p>
+                        <p class="text-gray-700 font-semibold mt-2" id="selected-unit-label">Unidade Selecionada</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Nova Seção: Composição da Pontuação por Eixo -->
+            <section id="axis-composition-section" class="mb-12 bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold text-primary-dark mb-6 text-center">Composição da Pontuação por Eixo da Unidade Selecionada</h2>
+                <div id="bi-axis-composition-content">
+                    <div id="bi-axis-placeholder" class="flex flex-col items-center justify-center h-64 text-center text-gray-500">
+                        <svg class="w-16 h-16 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0 0 20.25 18V5.25A2.25 2.25 0 0 0 18 3H6A2.25 2.25 0 0 0 3.75 5.25v12.75A2.25 2.25 0 0 0 6 20.25Z" /></svg>
+                        <h4 class="text-lg font-bold text-gray-700">Composição por Eixo</h4>
+                        <p>Selecione uma unidade na tabela abaixo para ver sua pontuação detalhada por eixo.</p>
+                    </div>
+                    <div id="bi-axis-charts-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <!-- Gráficos para cada eixo serão renderizados aqui -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Seção de Detalhes dos Indicadores (Lista) -->
+            <section id="indicator-details-section" class="mb-12 bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold text-primary-dark mb-6 text-center">Pontuação Detalhada dos Indicadores da Unidade Selecionada</h2>
+                <div id="bi-indicator-details-content">
+                    <div id="bi-indicator-placeholder" class="flex flex-col items-center justify-center h-40 text-center text-gray-500">
+                        <svg class="w-16 h-16 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0 0 20.25 18V5.25A2.25 2.25 0 0 0 18 3H6A2.25 2.25 0 0 0 3.75 5.25v12.75A2.25 2.25 0 0 0 6 20.25Z" /></svg>
+                        <h4 class="text-lg font-bold text-gray-700">Detalhes dos Indicadores</h4>
+                        <p>Selecione uma unidade na tabela abaixo para ver a pontuação de cada indicador.</p>
+                    </div>
+                    <ul id="bi-indicator-scores-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm hidden">
+                        <!-- Pontuações dos indicadores serão renderizadas aqui -->
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Seção de Tabela Detalhada -->
+            <section class="mb-12 bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold text-primary-dark mb-6 text-center">Classificação Detalhada por Unidade</h2>
+                <div class="flex flex-col lg:flex-row gap-8">
+                    <div class="w-full">
+                        <h3 class="text-xl font-bold mb-4 text-primary-dark">Tabela de Unidades</h3>
+                        <div class="flex flex-wrap gap-2 mb-4" id="filter-buttons">
+                            <button data-group="todos" class="filter-btn bg-primary-dark text-white py-2 px-4 rounded-md text-sm font-semibold">Todos</button>
+                            <button data-group="Grupo 1" class="filter-btn bg-gray-200 text-gray-700 py-2 px-4 rounded-md text-sm font-semibold">Grupo 1</button>
+                            <button data-group="Grupo 2" class="filter-btn bg-gray-200 text-gray-700 py-2 px-4 rounded-md text-sm font-semibold">Grupo 2</button>
+                            <button data-group="Indiretas" class="filter-btn bg-gray-200 text-gray-700 py-2 px-4 rounded-md text-sm font-semibold">Indiretas</button>
+                        </div>
+                        <div class="overflow-y-auto h-96 pr-2">
+                            <table class="w-full text-left text-sm">
+                                <thead class="sticky top-0 bg-gray-100 z-10"><tr><th class="p-3 font-semibold">#</th><th class="p-3 font-semibold">Unidade</th><th class="p-3 text-right font-semibold">Nota</th></tr></thead>
+                                <tbody id="bi-ranking-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="bg-primary-dark text-white p-6 md:p-8 text-center">
+            <p>&copy; 2025 Governo do Estado do Paraná. Todos os direitos reservados.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Dados Simulados para o Painel BI
+        const biData = {
+            units: [
+                { id: 'SEAP', name: 'SEAP', group: 'Grupo 1', finalScore: 94, indicators: [9, 8, 9, 7, 8, 9, 8, 7, 8, 9, 8, 7, 8, 9, 8] }, // Excelente geral
+                { id: 'IPEM', name: 'IPEM', group: 'Indiretas', finalScore: 88, indicators: [8, 7, 8, 6, 7, 8, 7, 6, 7, 8, 7, 6, 7, 8, 7] }, // Bom
+                { id: 'CEPR', name: 'CEPR', group: 'Indiretas', finalScore: 87, indicators: [7, 8, 7, 7, 6, 7, 8, 7, 6, 7, 8, 7, 6, 7, 8] }, // Bom
+                { id: 'AGE', name: 'AGE', group: 'Grupo 1', finalScore: 85, indicators: [8, 6, 8, 5, 7, 8, 6, 5, 7, 8, 6, 5, 7, 8, 6] }, // Satisfatório
+                { id: 'SEDEST', name: 'SEDEST', group: 'Grupo 2', finalScore: 85, indicators: [7, 7, 7, 6, 6, 7, 7, 6, 6, 7, 7, 6, 6, 7, 7] }, // Satisfatório
+                { id: 'PGE', name: 'PGE', group: 'Grupo 2', finalScore: 84, indicators: [6, 8, 6, 7, 5, 6, 8, 7, 5, 6, 8, 7, 5, 6, 8] }, // Satisfatório
+                { id: 'IPARDES', name: 'IPARDES', group: 'Indiretas', finalScore: 84, indicators: [7, 6, 7, 5, 8, 7, 6, 5, 8, 7, 6, 5, 8, 7, 6] }, // Satisfatório
+                { id: 'SEFA', name: 'SEFA', group: 'Grupo 1', finalScore: 81, indicators: [6, 7, 6, 8, 4, 6, 7, 8, 4, 6, 7, 8, 4, 6, 7] }, // Moderado
+                { id: 'CC', name: 'CC', group: 'Grupo 1', finalScore: 81, indicators: [5, 8, 5, 7, 5, 5, 8, 7, 5, 5, 8, 7, 5, 5, 8] }, // Moderado
+                { id: 'SEED', name: 'SEED', group: 'Grupo 1', finalScore: 80, indicators: [4, 9, 4, 6, 6, 4, 9, 6, 6, 4, 9, 6, 6, 4, 9] }, // Moderado
+                // Nova unidade SEES com variedade de status para demonstração
+                { id: 'SEES', name: 'SEES', group: 'Grupo 2', finalScore: 55, indicators: [9, 7, 5, 3, 8, 6, 4, 2, 9, 7, 5, 3, 8, 6, 4] },
+            ],
+            indicatorNames: [
+                '1.1 Empenho sobre Dotação Atualizada', '1.2 Liquidação sobre Dotação Atualizada', '1.3 Liquidação sobre Empenhos',
+                '2.1 Expansão Orçamentária', '2.2 Execução do Superávit Concedido', '2.3 Evitabilidade na Liberação de Créditos com Superávit',
+                '2.4 Indicador de alterações Internas Sem Acréscimos em LOA',
+                '3.1 Inscrição em Restos a Pagar', '3.2 Cancelamento de Restos a Pagar', '3.3 Pagamento dos Restos a Pagar', '3.4 Impacto de Despesas de Exercícios Anteriores',
+                '4.1 Pressão sobre Tesouro (Fontes Substituídas)', '4.2 Indicador de Foco em Ações Finalísticas', '4.3 Indicador de Execução Estratégica de Recursos Próprios e Vinculados', '4.4 Indicador de Independência Financeira'
+            ],
+            axisDefinitions: [ // Define os intervalos dos indicadores para cada eixo e sua pontuação bruta máxima (soma das pontuações dos indicadores de 0-10)
+                { name: 'Eixo 1: Execução', indicators: [0, 1, 2], maxRawScore: 25 }, // 1.1(7) + 1.2(9) + 1.3(9) = 25
+                { name: 'Eixo 2: Créditos Adicionais', indicators: [3, 4, 5, 6], maxRawScore: 25 }, // 2.1(6) + 2.2(6) + 2.3(7) + 2.4(6) = 25
+                { name: 'Eixo 3: Passivos de Exercícios Anteriores', indicators: [7, 8, 9, 10], maxRawScore: 25 }, // 3.1(7) + 3.2(6) + 3.3(6) + 3.4(6) = 25
+                { name: 'Eixo 4: Sustentabilidade Fiscal e Estratégica', indicators: [11, 12, 13, 14], maxRawScore: 25 } // 4.1(7) + 4.2(6) + 4.3(6) + 4.4(6) = 25
+            ],
+            // Novos pesos baseados na imagem fornecida
+            indicatorWeights: {
+                '1.1': 7, '1.2': 9, '1.3': 9,
+                '2.1': 6, '2.2': 6, '2.3': 7, '2.4': 6,
+                '3.1': 7, '3.2': 6, '3.3': 6, '3.4': 6,
+                '4.1': 7, '4.2': 6, '4.3': 6, '4.4': 6
+            }
+        };
+
+        let currentFilter = 'todos';
+        let biAxisScoreChartInstance = null; // Gráfico para as pontuações dos eixos
+
+
+        // Opções comuns do Chart.js para tooltips e rótulos
+        const commonChartOptions = {
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            const item = tooltipItems[0];
+                            let label = item.chart.data.labels[item.dataIndex];
+                            // Se o rótulo for um array (multilinha), junte-o para o título do tooltip
+                            if (Array.isArray(label)) {
+                                return label.join(' ');
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        };
+
+        // Função para quebrar rótulos longos para Chart.js
+        const wrapLabel = (label, maxWidth) => {
+            const words = label.split(' ');
+            let lines = [];
+            let currentLine = words[0];
+            for (let i = 1; i < words.length; i++) {
+                if (currentLine.length + words[i].length + 1 < maxWidth) {
+                    currentLine += ' ' + words[i];
+                } else {
+                    lines.push(currentLine);
+                    currentLine = words[i];
+                }
+            }
+            lines.push(currentLine);
+            return lines;
+        };
+
+        // Função para determinar o status do indicador com base na pontuação (escala de 0-10)
+        function getIndicatorStatus(score) {
+            if (score >= 8) { // 8-10 pts = Excelente
+                return { text: 'Excelente', color: 'text-excellent', dotColor: 'dot-excellent', barColor: '#0066CC' }; /* Azul mais claro (primary-light) */
+            } else if (score >= 6) { // 6-7 pts = Satisfatório
+                return { text: 'Satisfatório', color: 'text-satisfactory', dotColor: 'dot-satisfactory', barColor: '#004B91' }; /* Azul médio (primary-medium) */
+            } else if (score >= 4) { // 4-5 pts = Moderado
+                return { text: 'Moderado', color: 'text-moderate', dotColor: 'dot-moderate', barColor: '#002B5B' }; /* Azul escuro (primary-dark) */
+            } else { // 0-3 pts = Insatisfatório
+                return { text: 'Insatisfatório', color: 'text-insatisfactory', dotColor: 'dot-insatisfactory', barColor: '#DC3545' }; /* Vermelho vibrante */
+            }
+        }
+
+        // Função para determinar o status do eixo com base na pontuação escalonada (escala de 0-25)
+        function getAxisStatus(score) {
+            if (score >= 20) { // 20-25 pts = Excelente
+                return { text: 'Excelente', color: 'text-excellent', dotColor: 'dot-excellent', barColor: '#0066CC' }; /* Azul mais claro (primary-light) */
+            } else if (score >= 15) { // 15-19 pts = Satisfatório
+                return { text: 'Satisfatório', color: 'text-satisfactory', dotColor: 'dot-satisfactory', barColor: '#004B91' }; /* Azul médio (primary-medium) */
+            } else if (score >= 10) { // 10-14 pts = Moderado
+                return { text: 'Moderado', color: 'text-moderate', dotColor: 'dot-moderate', barColor: '#002B5B' }; /* Azul escuro (primary-dark) */
+            } else { // 0-9 pts = Insatisfatório
+                return { text: 'Insatisfatório', color: 'text-insatisfactory', dotColor: 'dot-insatisfactory', barColor: '#DC3545' }; /* Vermelho vibrante */
+            }
+        }
+
+        // Renderiza a Tabela de Ranking do BI
+        function renderBiRankingTable() {
+            const tableBody = document.getElementById('bi-ranking-table-body');
+            if (!tableBody) return;
+            tableBody.innerHTML = '';
+            const filteredData = biData.units
+                .filter(item => currentFilter === 'todos' || item.group === currentFilter)
+                .sort((a, b) => b.finalScore - a.finalScore);
+            filteredData.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-blue-50 cursor-pointer border-b border-gray-200';
+                row.dataset.id = item.id;
+                row.innerHTML = `<td class="p-3 font-medium text-gray-600">${index + 1}</td><td class="p-3 text-gray-800 font-semibold">${item.name}</td><td class="p-3 text-right font-bold text-primary-dark">${item.finalScore}</td>`;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Atualiza os cartões KPI com os dados da melhor unidade geral e selecionada
+        function updateKpiCards(selectedUnit = null) {
+            // Encontra a melhor unidade no grupo ATUALMENTE FILTRADO
+            const unitsInCurrentFilter = biData.units.filter(unit => currentFilter === 'todos' || unit.group === currentFilter);
+            const bestUnitInGroup = unitsInCurrentFilter.length > 0 
+                                            ? [...unitsInCurrentFilter].sort((a, b) => b.finalScore - a.finalScore)[0]
+                                            : { name: 'N/A', finalScore: 'N/A' };
+            
+            const bestUnitNameElement = document.getElementById('best-unit-name');
+            const bestUnitLabelElement = document.getElementById('best-unit-label');
+            const selectedUnitNameElement = document.getElementById('selected-unit-name');
+            const selectedUnitLabelElement = document.getElementById('selected-unit-label');
+            const kpiSelectedUnitDiv = document.getElementById('kpi-selected-unit');
+
+            if (bestUnitNameElement) bestUnitNameElement.textContent = bestUnitInGroup.name;
+            if (bestUnitLabelElement) bestUnitLabelElement.textContent = `Melhor Desempenho no Grupo (${bestUnitInGroup.finalScore})`;
+
+            if (selectedUnit) {
+                if (selectedUnitNameElement) selectedUnitNameElement.textContent = selectedUnit.name;
+                if (selectedUnitLabelElement) selectedUnitLabelElement.textContent = `Unidade Selecionada (${selectedUnit.finalScore})`;
+                if (kpiSelectedUnitDiv) kpiSelectedUnitDiv.classList.add('kpi-selected-highlight'); /* Adiciona classe de destaque */
+            } else {
+                if (selectedUnitNameElement) selectedUnitNameElement.textContent = 'N/A';
+                if (selectedUnitLabelElement) selectedUnitLabelElement.textContent = 'Unidade Selecionada';
+                if (kpiSelectedUnitDiv) kpiSelectedUnitDiv.classList.remove('kpi-selected-highlight'); /* Remove classe de destaque */
+            }
+        }
+
+        // Renderiza gráficos de colunas empilhadas para cada eixo
+        function renderAxisCompositionCharts(unitData) {
+            const axisChartsContainer = document.getElementById('bi-axis-charts-container');
+            if (!axisChartsContainer) return;
+
+            axisChartsContainer.innerHTML = ''; // Limpa gráficos anteriores
+            axisChartsContainer.classList.remove('hidden');
+            const biAxisPlaceholder = document.getElementById('bi-axis-placeholder');
+            if (biAxisPlaceholder) biAxisPlaceholder.classList.add('hidden');
+
+            biData.axisDefinitions.forEach((axisDef, axisIndex) => {
+                const canvasId = `axisChart-${axisIndex}`;
+                const chartDiv = document.createElement('div');
+                // Aplica flexbox diretamente ao chartDiv para alinhamento consistente de título e canvas
+                chartDiv.className = 'bg-gray-50 p-4 rounded-lg shadow-sm chart-container flex flex-col'; 
+                chartDiv.innerHTML = `<h4 class="text-lg font-bold text-primary-dark mb-3 text-center">${axisDef.name}</h4><canvas id="${canvasId}" class="flex-grow"></canvas>`;
+                axisChartsContainer.appendChild(chartDiv);
+
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                
+                // Prepara os datasets para o gráfico de barras empilhadas para este eixo
+                const datasets = axisDef.indicators.map(indicatorIndex => {
+                    const indicatorScore = unitData.indicators[indicatorIndex];
+                    const indicatorStatus = getIndicatorStatus(indicatorScore);
+                    const indicatorFullName = biData.indicatorNames[indicatorIndex];
+                    const indicatorShortName = indicatorFullName.split(' ')[0]; // Ex: "1.1"
+
+                    return {
+                        label: indicatorShortName, // Nome curto para a legenda
+                        data: [indicatorScore], // Valor único para este indicador
+                        backgroundColor: indicatorStatus.barColor,
+                        borderColor: indicatorStatus.barColor,
+                        borderWidth: 1,
+                        stack: `axis${axisIndex}Stack`, // Todos os indicadores neste eixo se empilham
+                        borderRadius: 5,
+                    };
+                });
+
+                new Chart(ctx, {
+                    type: 'bar', // Gráfico de barras vertical
+                    data: {
+                        labels: ['Pontuação'], // Um único rótulo para a coluna
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 1000,
+                            easing: 'easeInOutQuart'
+                        },
+                        scales: {
+                            x: {
+                                stacked: true, // Empilha as barras no eixo X
+                                display: false, // Oculta os rótulos do eixo X (Pontuação)
+                                grid: { display: false }
+                            },
+                            y: {
+                                stacked: true, // Empilha as barras no eixo Y
+                                beginAtZero: true,
+                                max: axisDef.maxRawScore, // Pontuação bruta máxima para este eixo
+                                title: {
+                                    display: true,
+                                    text: 'Pontuação Total do Eixo',
+                                    font: { family: 'Lato', size: 12 },
+                                    color: '#374151'
+                                },
+                                ticks: {
+                                    color: '#4b5563',
+                                    font: { family: 'Lato' }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true, // Mostra a legenda para os segmentos empilhados
+                                position: 'bottom',
+                                labels: {
+                                    font: { family: 'Lato', size: 10 },
+                                    color: '#374151',
+                                    usePointStyle: true, // Usa pontos coloridos na legenda
+                                    boxWidth: 8,
+                                    padding: 10,
+                                    filter: (legendItem, chartData) => {
+                                        // Mostra apenas os itens da legenda que possuem um valor não zero para este eixo
+                                        const dataset = chartData.datasets[legendItem.datasetIndex];
+                                        return dataset.data[0] > 0;
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.x + ' pts'; // Para barra horizontal, x é o valor
+                                        }
+                                        // Obtém o nome completo do indicador a partir do array original indicatorNames
+                                        const indicatorIndex = biData.indicatorNames.findIndex(name => name.startsWith(context.dataset.label));
+                                        const fullIndicatorName = biData.indicatorNames[indicatorIndex];
+                                        const indicatorScore = context.parsed.x;
+                                        const status = getIndicatorStatus(indicatorScore);
+                                        return `${fullIndicatorName}: ${indicatorScore} pts (${status.text})`;
+                                    }
+                                }
+                            },
+                            datalabels: {
+                                display: true,
+                                color: '#fff', // Cor branca para os rótulos nas barras
+                                font: {
+                                    family: 'Lato',
+                                    weight: 'bold',
+                                    size: 10
+                                },
+                                formatter: (value) => value > 0 ? value + ' pts' : '', // Mostra o rótulo apenas se o valor > 0
+                                align: 'center',
+                                anchor: 'center'
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+
+        // Mostra Detalhes da Unidade (Gráfico de Barras de Indicadores Individuais e Lista)
+        function showBiUnitDetails(unitId) {
+            const unitData = biData.units.find(u => u.id === unitId);
+            if (!unitData) return;
+
+            // Oculta placeholders e mostra seções de conteúdo
+            const biAxisPlaceholder = document.getElementById('bi-axis-placeholder');
+            if (biAxisPlaceholder) biAxisPlaceholder.classList.add('hidden');
+            const biAxisChartsContainer = document.getElementById('bi-axis-charts-container');
+            if (biAxisChartsContainer) biAxisChartsContainer.classList.remove('hidden');
+            const biIndicatorPlaceholder = document.getElementById('bi-indicator-placeholder');
+            if (biIndicatorPlaceholder) biIndicatorPlaceholder.classList.add('hidden');
+            const biIndicatorScoresList = document.getElementById('bi-indicator-scores-list');
+            if (biIndicatorScoresList) biIndicatorScoresList.classList.remove('hidden');
+
+            // Atualiza cartões KPI com a unidade selecionada
+            updateKpiCards(unitData);
+            
+            // Renderiza os gráficos de composição do eixo
+            renderAxisCompositionCharts(unitData);
+
+            // Renderiza a lista de pontuações detalhadas dos indicadores com status
+            if (biIndicatorScoresList) { // Verifica se o elemento existe antes de manipular
+                biIndicatorScoresList.innerHTML = ''; // Limpa a lista anterior
+                // Cria um array de objetos para armazenar o nome e a pontuação do indicador, então o classifica pelo ID numérico
+                const indicatorsWithDetails = biData.indicatorNames.map((name, index) => ({
+                    fullName: name,
+                    shortName: name.split(' ')[0], // Ex: "1.1"
+                    score: unitData.indicators[index],
+                    status: getIndicatorStatus(unitData.indicators[index])
+                }));
+
+                // Classifica os indicadores pelo seu ID numérico (shortName)
+                indicatorsWithDetails.sort((a, b) => {
+                    const aParts = a.shortName.split('.').map(Number);
+                    const bParts = b.shortName.split('.').map(Number);
+
+                    if (aParts[0] !== bParts[0]) {
+                        return aParts[0] - bParts[0];
+                    }
+                    return aParts[1] - bParts[1];
+                });
+
+                indicatorsWithDetails.forEach(item => { 
+                    const li = document.createElement('li');
+                    li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-md';
+                    li.innerHTML = `
+                        <span>
+                            <span class="inline-block w-3 h-3 rounded-full mr-2 ${item.status.dotColor}"></span>
+                            ${item.fullName}:
+                        </span> 
+                        <span class="font-bold ${item.status.color}">${item.score} pts (${item.status.text})</span>
+                    `;
+                    biIndicatorScoresList.appendChild(li);
+                });
+            }
+        }
+
+        // Configura os botões de filtro para a Tabela de Ranking do BI
+        function setupBiRankingInteractions() {
+            document.getElementById('filter-buttons')?.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON') {
+                    currentFilter = e.target.dataset.group;
+                    document.querySelectorAll('#filter-buttons button').forEach(btn => {
+                        btn.classList.remove('bg-primary-dark', 'text-white');
+                        btn.classList.add('bg-gray-200', 'text-gray-700');
+                    });
+                    e.target.classList.add('bg-primary-dark', 'text-white');
+                    e.target.classList.remove('bg-gray-200', 'text-gray-700');
+                    renderBiRankingTable();
+                    updateKpiCards(); // Atualiza a melhor unidade no grupo quando o filtro muda
+                    // Oculta os detalhes da unidade quando o filtro muda até que uma nova unidade seja selecionada
+                    const biAxisPlaceholder = document.getElementById('bi-axis-placeholder');
+                    if (biAxisPlaceholder) biAxisPlaceholder.classList.remove('hidden');
+                    const biAxisChartsContainer = document.getElementById('bi-axis-charts-container');
+                    if (biAxisChartsContainer) biAxisChartsContainer.classList.add('hidden');
+                    const biIndicatorPlaceholder = document.getElementById('bi-indicator-placeholder');
+                    if (biIndicatorPlaceholder) biIndicatorPlaceholder.classList.remove('hidden'); // Mostra o placeholder para detalhes do indicador individual
+                    const biIndicatorScoresList = document.getElementById('bi-indicator-scores-list');
+                    if (biIndicatorScoresList) biIndicatorScoresList.classList.add('hidden'); // Oculta o conteúdo do indicador individual
+                    document.querySelectorAll('#bi-ranking-table-body tr').forEach(r => r.classList.remove('bg-blue-100', 'font-bold'));
+                }
+            });
+
+            document.getElementById('bi-ranking-table-body')?.addEventListener('click', (e) => {
+                const row = e.target.closest('tr');
+                if (row) {
+                    const unitId = row.dataset.id;
+                    showBiUnitDetails(unitId);
+                    // Remove o destaque da linha anterior e adiciona à linha atual
+                    document.querySelectorAll('#bi-ranking-table-body tr').forEach(r => r.classList.remove('bg-blue-100', 'font-bold'));
+                    row.classList.add('bg-blue-100', 'font-bold');
+                }
+            });
+        }
+
+        // Renderização inicial na carga da página
+        document.addEventListener('DOMContentLoaded', () => {
+            renderBiRankingTable();
+            setupBiRankingInteractions();
+            updateKpiCards(); // Inicializa os cartões KPI na carga
+        });
+    </script>
+</body>
+</html>
